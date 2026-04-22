@@ -3,7 +3,7 @@
   "version": "1.0.2",
   "description": "Share a folder over your local network for browsing and syncing with the tunnelist desktop app.",
   "license": "ISC",
-  "author": "Wisporius",
+  "author": "Yure",
   "type": "module",
   "main": "index.js",
   "bin": {
