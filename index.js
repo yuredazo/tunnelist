@@ -1,20 +1,59 @@
 #!/usr/bin/env node
 import { createServer } from "http";
 import { createReadStream, statSync } from "fs";
-import { join, extname } from "path";
+import { join, extname, resolve, sep } from "path";
 import { networkInterfaces } from "os";
+import { createRequire } from "module";
 import { mime } from "./src/mime.js";
 import { renderListing } from "./src/listing.js";
 import { handleApiList, handleApiSync } from "./src/api.js";
 
-const ROOT = ".";
-const argPort = process.argv.indexOf("-p") !== -1 && process.argv[process.argv.indexOf("-p") + 1];
-const PORT = argPort || process.env.PORT || 3000;
+const { version } = createRequire(import.meta.url)("./package.json");
+const args = process.argv.slice(2);
 
-createServer((req, res) => {
+if (args.includes("--help") || args.includes("-h")) {
+  console.log(`tunnelist v${version} — share a folder over your local network
+
+Usage:
+  tunnelist [options]
+
+Options:
+  -p <port>      Port to listen on (default: 3000, or $PORT)
+  -v, --version  Print version
+  -h, --help     Show this help`);
+  process.exit(0);
+}
+
+if (args.includes("--version") || args.includes("-v")) {
+  console.log(version);
+  process.exit(0);
+}
+
+const pIdx = args.indexOf("-p");
+let PORT = parseInt(process.env.PORT, 10) || 3000;
+if (pIdx !== -1) {
+  const raw = args[pIdx + 1];
+  const parsed = parseInt(raw, 10);
+  if (!raw || isNaN(parsed) || parsed < 1 || parsed > 65535) {
+    console.error(`error: -p requires a valid port number (1–65535)`);
+    process.exit(1);
+  }
+  PORT = parsed;
+}
+
+const ROOT = ".";
+const ROOT_ABS = resolve(ROOT);
+
+function isSafe(fsPath) {
+  const r = resolve(fsPath);
+  return r === ROOT_ABS || r.startsWith(ROOT_ABS + sep);
+}
+
+createServer(async (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, HEAD, POST");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Range");
+  res.setHeader("Access-Control-Expose-Headers", "Content-Range, Accept-Ranges, Content-Length");
 
   if (req.method === "OPTIONS") {
     res.writeHead(204);
@@ -30,28 +69,29 @@ createServer((req, res) => {
     res.writeHead(405);
     return res.end();
   }
-  if (urlPath.includes("..")) {
+
+  const fsPath = join(ROOT, urlPath);
+  if (!isSafe(fsPath)) {
     res.writeHead(400);
     return res.end();
   }
 
-  const fsPath = join(ROOT, urlPath);
   let stat;
-  try { stat = statSync(fsPath); } catch {
+  try { stat = statSync(resolve(fsPath)); } catch {
     res.writeHead(404);
     return res.end("Not found");
   }
 
   if (stat.isDirectory()) {
     res.writeHead(200, { "Content-Type": "text/html" });
-    return res.end(renderListing(fsPath, urlPath));
+    return res.end(renderListing(resolve(fsPath), urlPath));
   }
 
   const filename = fsPath.split(/[\\/]/).pop();
-  const rangeHeader = req.headers['range'];
+  const rangeHeader = req.headers["range"];
 
   if (rangeHeader) {
-    const [startStr, endStr] = rangeHeader.replace('bytes=', '').split('-');
+    const [startStr, endStr] = rangeHeader.replace("bytes=", "").split("-");
     const start = parseInt(startStr, 10);
     const end = endStr ? parseInt(endStr, 10) : stat.size - 1;
     res.writeHead(206, {
@@ -62,7 +102,7 @@ createServer((req, res) => {
       "Content-Disposition": `attachment; filename="${filename}"`,
     });
     if (req.method === "HEAD") return res.end();
-    createReadStream(fsPath, { start, end }).pipe(res);
+    createReadStream(resolve(fsPath), { start, end }).pipe(res);
   } else {
     res.writeHead(200, {
       "Accept-Ranges": "bytes",
@@ -71,11 +111,11 @@ createServer((req, res) => {
       "Content-Disposition": `attachment; filename="${filename}"`,
     });
     if (req.method === "HEAD") return res.end();
-    createReadStream(fsPath).pipe(res);
+    createReadStream(resolve(fsPath)).pipe(res);
   }
 
 }).listen(PORT, () => {
   const allIps = Object.values(networkInterfaces()).flat().filter(i => i.family === "IPv4" && !i.internal);
   const lanIp = (allIps.find(i => i.address.startsWith("192.168.")) ?? allIps.find(i => i.address.startsWith("172.")) ?? allIps[0])?.address ?? "localhost";
-  console.log(`tunnelist — serving "${process.cwd()}" at http://${lanIp}:${PORT}`);
+  console.log(`tunnelist v${version} — serving "${process.cwd()}" at http://${lanIp}:${PORT}`);
 });

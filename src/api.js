@@ -1,5 +1,6 @@
-import { createReadStream, statSync, readdirSync } from "fs";
-import { join, relative } from "path";
+import { createReadStream, statSync } from "fs";
+import { readdir } from "fs/promises";
+import { join, relative, resolve, sep } from "path";
 import { createHash } from "crypto";
 
 function hashFile(filePath) {
@@ -14,7 +15,7 @@ function hashFile(filePath) {
 
 async function walkAndHash(dir, baseDir) {
   const results = {};
-  const entries = readdirSync(dir, { withFileTypes: true });
+  const entries = await readdir(dir, { withFileTypes: true });
   for (const entry of entries) {
     const fullPath = join(dir, entry.name);
     const relPath = relative(baseDir, fullPath).replace(/\\/g, "/");
@@ -27,17 +28,26 @@ async function walkAndHash(dir, baseDir) {
   return results;
 }
 
-export function handleApiList(req, res, root) {
+function isSafe(rootAbs, fsPath) {
+  const resolved = resolve(fsPath);
+  return resolved === rootAbs || resolved.startsWith(rootAbs + sep);
+}
+
+export async function handleApiList(req, res, root) {
+  const rootAbs = resolve(root);
   const url = new URL(req.url, "http://localhost");
   const apiPath = url.searchParams.get("path") || "/";
-  if (apiPath.includes("..")) {
+
+  const fsPath = join(root, apiPath);
+  if (!isSafe(rootAbs, fsPath)) {
     res.writeHead(400, { "Content-Type": "application/json" });
     return res.end(JSON.stringify({ error: "Invalid path" }));
   }
-  const fsPath = join(root, apiPath);
+
   let entries;
   try {
-    entries = readdirSync(fsPath, { withFileTypes: true })
+    const dirents = await readdir(fsPath, { withFileTypes: true });
+    entries = dirents
       .sort((a, b) => {
         if (a.isDirectory() !== b.isDirectory()) return a.isDirectory() ? -1 : 1;
         return a.name.localeCompare(b.name);
@@ -53,11 +63,13 @@ export function handleApiList(req, res, root) {
     res.writeHead(404, { "Content-Type": "application/json" });
     return res.end(JSON.stringify({ error: "Not found" }));
   }
+
   res.writeHead(200, { "Content-Type": "application/json" });
   res.end(JSON.stringify({ path: apiPath, entries }));
 }
 
 export async function handleApiSync(req, res, root) {
+  const rootAbs = resolve(root);
   let body = "";
   req.on("data", chunk => (body += chunk));
   req.on("end", async () => {
@@ -68,12 +80,12 @@ export async function handleApiSync(req, res, root) {
     }
 
     const { remotePath = "/", localHashes = {} } = data;
-    if (remotePath.includes("..")) {
+    const fsPath = join(root, remotePath);
+    if (!isSafe(rootAbs, fsPath)) {
       res.writeHead(400, { "Content-Type": "application/json" });
       return res.end(JSON.stringify({ error: "Invalid path" }));
     }
 
-    const fsPath = join(root, remotePath);
     let serverHashes;
     try {
       serverHashes = await walkAndHash(fsPath, fsPath);
@@ -85,7 +97,7 @@ export async function handleApiSync(req, res, root) {
     const toDownload = Object.entries(serverHashes)
       .filter(([rel, hash]) => !localHashes[rel] || localHashes[rel] !== hash)
       .map(([rel]) => {
-        try { return { rel, size: statSync(join(fsPath, ...rel.split('/'))).size }; }
+        try { return { rel, size: statSync(join(fsPath, ...rel.split("/"))).size }; }
         catch { return { rel, size: 0 }; }
       });
 

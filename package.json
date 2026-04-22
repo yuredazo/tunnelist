@@ -1,6 +1,6 @@
 {
   "name": "tunnelist",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Share a folder over your local network for browsing and syncing with the tunnelist desktop app.",
   "license": "ISC",
   "author": "Wisporius",
@@ -13,6 +13,9 @@
     "index.js",
     "src"
   ],
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
     "start": "node index.js"
   }
