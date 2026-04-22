@@ -2,6 +2,12 @@
   "name": "tunnelist",
   "version": "1.0.2",
   "description": "Share a folder over your local network for browsing and syncing with the tunnelist desktop app.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yuredazo/tunnelist.git"
+  },
+  "homepage": "https://github.com/yuredazo/tunnelist",
+  "bugs": "https://github.com/yuredazo/tunnelist/issues",
   "license": "ISC",
   "author": "Yure",
   "type": "module",
