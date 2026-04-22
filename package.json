@@ -1,6 +1,6 @@
 {
   "name": "tunnelist",
-  "version": "1.0.2",
+  "version": "1.0.4",
   "description": "Share a folder over your local network for browsing and syncing with the tunnelist desktop app.",
   "repository": {
     "type": "git",
@@ -24,5 +24,6 @@
   },
   "scripts": {
     "start": "node index.js"
-  }
+  },
+  "keywords": ["file-sharing", "lan", "sync", "local-network", "cli"]
 }
